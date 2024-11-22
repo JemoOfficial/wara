@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  db: # Unsere MySQL-DB
+    image: mysql:5.7
+    container_name: wordpress_db
+    environment:
+      MYSQL_ROOT_PASSWORD: example
+      MYSQL_DATABASE: wordpresse
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+    volumes:
+      - db_data:/var/lib/mysql
+
+  wordpress: # Webserver, WordPress und Plugin WhooComerce
+    image: wordpress:latest
+    container_name: wordpress_app
+    depends_on:
+      - db
+    ports:
+      - "443:443" # HTTPS
+      - "80:80" # HTTP (als Backup Port für die Website!)
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wordpress_data:/var/www/html
+      - wordpress_etc:/etc/
+
+  mosquitto: # MQTT Broker --> Test-Container: Nimmt Nachrichten von Publisher entgegen und Verteilt diese an die Subscriber
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto
+    depends_on:
+      - db
+    ports:
+      - "1883:1883" # Standard MQTT Port
+      - "1884:1883" # Abweichender MQTT Port (vorgegeben durch Infrastruktur!)
+      - "9001:9001" # WebSocket Port
+    volumes:
+      - mosquitto_data:/mosquitto/data
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf  # Bind-Mound --> also liegt die Datei im Verzeichniss der compose.yaml --> leichtere Administration!
+    environment:
+      MYSQL_DB_HOST: db
+      MYSQL_DB_PORT: 3306
+      MYSQL_DB_USER: wordpress
+      MYSQL_DB_PASSWORD: wordpress
+
+  mqtt_publisher: # --> Sendet an den Broker --> Testaufbau, später an die Industrie 4.0-Anlage
+    build: ./mqtt_script
+    container_name: mqtt_publisher
+    volumes:
+      - ./mqtt_script:/app
+    env_file:
+      - ./mqtt_script/.env
+    command: ["sh", "-c", "pip install --no-cache-dir -r /app/requirements.txt && python /app/mqtt_publisher.py"]
+
+volumes: # Persistente Ordner
+  db_data:
+  wordpress_data:
+  wordpress_etc:
+  mosquitto_data:
+
